@@ -2,7 +2,7 @@ FROM rust:1.90.0-bookworm AS chef
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev g++ make \
     && cargo install cargo-chef \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,7 +23,7 @@ RUN cargo build --release --bin logs
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/logs /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/logs"]
