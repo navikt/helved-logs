@@ -43,6 +43,7 @@ impl Log {
         };
 
         json!({
+            "channel": "team-hel-ved-alerts",
             "blocks": [
                 {
                     "type": "header",
