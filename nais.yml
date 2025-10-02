@@ -1,0 +1,23 @@
+apiVersion: nais.io/v1alpha1
+kind: Application
+metadata:
+  name: logs
+  namespace: helved
+spec:
+  liveness:
+    path: /
+  readiness:
+    path: /
+  image: {{image}}
+  port: 8080
+  replicas:
+    max: 1
+    min: 1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 24Mi
+    limits:
+      memory: 128Mi
+  envFrom:
+    - secret: slack-webhook
