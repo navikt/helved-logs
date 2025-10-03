@@ -17,6 +17,7 @@ async fn main() -> Result<()> {
 
     let log_consumer = tokio::spawn(async move {
         while let Some((log, container_name, pod_name))  = rx.recv().await {
+            println!("found {:?}", &log);
             let _ = slack.send(log, container_name, pod_name).await;
         }
     });
