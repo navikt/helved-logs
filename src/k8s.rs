@@ -94,6 +94,9 @@ async fn watch_logs(
                                 let json_part = &line[json_start_idx..];
                                 match serde_json::from_str::<Log>(json_part) {
                                     Ok(log) => {
+                                        // if !&log.is_error() {
+                                        //     println!("found non error log {:?}", &log);
+                                        // }
                                         if log.is_error() && tx.send((log, container_name.clone(), pod_name.clone())).await.is_err() { 
                                             return Ok(());
                                         }
@@ -103,7 +106,7 @@ async fn watch_logs(
                             }
                         }
                         Err(e) => {
-                            eprintln!("line_result {}: {}", container_name, e);
+                            eprintln!("line_result {}: {}, reconnects..", container_name, e);
                             break;
                         }
                     }

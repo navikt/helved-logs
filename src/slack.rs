@@ -18,14 +18,18 @@ impl Default for Slack {
 impl Slack {
     pub async fn send(&self, log: Log, container_name: String, pod_name: String) -> anyhow::Result<()>{
         let msg = log.to_slack_alert(container_name, pod_name);
-        let echo_json: serde_json::Value = reqwest::Client::new()
+
+        let res = reqwest::Client::new() 
             .post(&self.webhook)
             .json(&msg)
             .send()
-            .await?
-            .json()
-            .await?;
-        println!("{echo_json:#?}");
+            .await;
+
+        match res {
+            Ok(res) => println!("ok: {:?}", res),
+            Err(e) => eprintln!("err: {:?}", e),
+        }
+        
         Ok(())
     }
 }
