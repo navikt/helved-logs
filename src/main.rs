@@ -18,7 +18,8 @@ async fn main() -> Result<()> {
             println!("found {:?}", &log);
             match slack.send(log, container_name, pod_name).await {
                 Ok(res) if res.status().as_u16() == 200  => println!("sent"),
-                _ => println!("failed to send"),
+                Ok(res) => println!("failed to send {:?}", res),
+                Err(e) => println!("failed to send {}", e),
             }
         }
     });
