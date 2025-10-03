@@ -1,5 +1,3 @@
-use std::env;
-
 use anyhow::Result;
 use tokio::{join, sync::mpsc::{self}};
 
@@ -11,14 +9,17 @@ mod probe;
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = kube::Client::try_default().await?;
-    let namespace = env::var("NAIS_NAMESPACE").unwrap_or("helved".into());
+    let namespace = env("NAIS_NAMESPACE");
     let (tx, mut rx) = mpsc::channel::<(model::Log, String, String)>(100);
     let slack = slack::Slack::default();
 
     let log_consumer = tokio::spawn(async move {
         while let Some((log, container_name, pod_name))  = rx.recv().await {
             println!("found {:?}", &log);
-            let _ = slack.send(log, container_name, pod_name).await;
+            match slack.send(log, container_name, pod_name).await {
+                Ok(res) if res.status().as_u16() == 200  => println!("sent"),
+                _ => println!("failed to send"),
+            }
         }
     });
 
@@ -39,4 +40,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+pub fn env(env: &str) -> String {
+    std::env::var(env).unwrap_or_else(|_| panic!("env var {} missing", env))
+}
 

@@ -1,5 +1,3 @@
-use std::env;
-
 use crate::model::Log;
 
 pub struct Slack {
@@ -9,28 +7,26 @@ pub struct Slack {
 impl Default for Slack {
     fn default() -> Self {
         Slack {
-            // webhook: env::var("apiUrl").expect("secret 'slack-webhook' not mounted"),
-            webhook: env::var("apiUrl").unwrap_or("dummy-webhook".into()),
+            webhook: crate::env("apiUrl"),
         }
     }
 }
 
 impl Slack {
-    pub async fn send(&self, log: Log, container_name: String, pod_name: String) -> anyhow::Result<()>{
-        let msg = log.to_slack_alert(container_name, pod_name);
-
+    pub async fn send(
+        &self,
+        log: Log,
+        container_name: String,
+        pod_name: String,
+    ) -> anyhow::Result<reqwest::Response>{
+        let alert = log.to_slack_alert(container_name, pod_name);
         let res = reqwest::Client::new() 
             .post(&self.webhook)
-            .json(&msg)
+            .json(&alert)
             .send()
-            .await;
+            .await?;
 
-        match res {
-            Ok(res) => println!("ok: {:?}", res),
-            Err(e) => eprintln!("err: {:?}", e),
-        }
-        
-        Ok(())
+        Ok(res)
     }
 }
 
