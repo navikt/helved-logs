@@ -20,6 +20,7 @@ impl Slack {
         pod_name: String,
     ) -> anyhow::Result<reqwest::Response>{
         let alert = log.to_slack_alert(container_name, pod_name);
+        println!("alert: {}", &alert.to_string());
         let res = reqwest::Client::new() 
             .post(&self.webhook)
             .json(&alert)
