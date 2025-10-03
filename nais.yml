@@ -3,6 +3,8 @@ kind: Application
 metadata:
   name: logs
   namespace: helved
+  labels:
+    apiserver-access: "enabled"
 spec:
   liveness:
     path: /
@@ -21,3 +23,31 @@ spec:
       memory: 128Mi
   envFrom:
     - secret: slack-webhook
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: logs-role
+  namespace: helved
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: logs-role-binding
+  namespace: helved
+roleRef:
+subjects:
+  - kind: ServiceAccount
+    name: logs
+
