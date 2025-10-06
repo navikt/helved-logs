@@ -77,7 +77,7 @@ impl Log {
                     "type": "section",
                     "text": {
                         "type": "plain_text",
-                        "text": self.logger_name,
+                        "text": self.logger_name.clone().unwrap_or("log".into()),
                         "emoji": true
                     }
                 },

@@ -42,7 +42,6 @@ pub async fn watch_pods(
                                 }
                         });
                         log_tasks.insert(pod_name.clone(), handle.abort_handle());
-                        println!("start log for {}", pod_name);
                     }
                 }
             }
@@ -50,7 +49,7 @@ pub async fn watch_pods(
                 let pod_name = pod.name_any();
                 if let Some(handle) = log_tasks.remove(&pod_name) {
                     handle.abort();
-                    println!("stop logs for {} because pod was deleted", pod.name_any());
+                    println!("stop logs for {}", pod.name_any());
                 }
             },
             watcher::Event::Init => {}
@@ -83,6 +82,8 @@ async fn watch_logs(
             ..LogParams::default()
         };
 
+        println!("start log for {}", pod_name);
+
         match pods.log_stream(&pod_name, &params).await {
             Ok(logs) => {
                 let mut lines = logs.lines();
@@ -103,15 +104,14 @@ async fn watch_logs(
                             }
                         }
                         Err(e) => {
-                            eprintln!("line_result {}: {}, reconnects..", container_name, e);
+                            eprintln!("line_result {}: {}", container_name, e);
                             break;
                         }
                     }
                 }
-                return Ok(());
             }
             Err(e) => {
-                eprintln!("log stream {}: {}", container_name, e);
+                eprintln!("log_stream {}: {}", container_name, e);
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }

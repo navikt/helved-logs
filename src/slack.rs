@@ -1,3 +1,5 @@
+use anyhow::Result;
+use anyhow::Context;
 use crate::model::Log;
 
 pub struct Slack {
@@ -18,16 +20,38 @@ impl Slack {
         log: Log,
         container_name: String,
         pod_name: String,
-    ) -> anyhow::Result<reqwest::Response>{
+    ) -> Result<()> {
         let alert = log.to_slack_alert(container_name, pod_name);
-        println!("alert: {}", &alert.to_string());
+
+        match serde_json::to_string_pretty(&alert) {
+            Ok(payload) => {
+                println!("--- BEGIN SLACK PAYLOAD ---");
+                println!("{}", payload);
+                println!("--- END SLACK PAYLOAD ---");
+            },
+            Err(e) => {
+                return Err(anyhow::anyhow!("Failed to serialize slack alert: {}", e));
+            }
+        }
         let res = reqwest::Client::new() 
             .post(&self.webhook)
             .json(&alert)
             .send()
             .await?;
 
-        Ok(res)
+        let status = res.status();
+        if status.is_server_error() || status.is_client_error() {
+            let error_body = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("slack returned http error {}: {}", status, error_body));
+        }
+
+        let body = res.text().await.context("failed to read slack response body")?;
+        if body != "ok" {
+            return Err(anyhow::anyhow!("slack api rejected payload: {}", body));
+        }
+
+        println!("slack message sent and validated succesfully.");
+        Ok(())
     }
 }
 

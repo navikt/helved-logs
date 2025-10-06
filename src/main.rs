@@ -17,9 +17,8 @@ async fn main() -> Result<()> {
         while let Some((log, container_name, pod_name))  = rx.recv().await {
             println!("found {:?}", &log);
             match slack.send(log, container_name, pod_name).await {
-                Ok(res) if res.status().as_u16() == 200  => println!("sent"),
-                Ok(res) => println!("failed to send {:?}", res),
-                Err(e) => println!("failed to send {}", e),
+                Ok(_) => println!("sent"),
+                Err(e) => println!("failed {}", e),
             }
         }
     });
