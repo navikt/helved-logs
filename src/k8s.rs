@@ -38,7 +38,7 @@ pub async fn watch_pods(
                         let handle = tokio::spawn(async move {
                             match watch_logs(container_name, pod_name_clone, pods_clone, tx_clone).await {
                                     Ok(_) => (),
-                                    Err(e) => eprintln!("Task error {}", e),
+                                    Err(e) => log::error!("Task error {}", e),
                                 }
                         });
                         log_tasks.insert(pod_name.clone(), handle.abort_handle());
@@ -49,7 +49,7 @@ pub async fn watch_pods(
                 let pod_name = pod.name_any();
                 if let Some(handle) = log_tasks.remove(&pod_name) {
                     handle.abort();
-                    println!("stop logs for {}", pod.name_any());
+                    log::info!("stop logs for {}", pod.name_any());
                 }
             },
             watcher::Event::Init => {}
@@ -82,7 +82,7 @@ async fn watch_logs(
             ..LogParams::default()
         };
 
-        println!("start log for {}", pod_name);
+        log::info!("start log for {}", pod_name);
 
         match pods.log_stream(&pod_name, &params).await {
             Ok(logs) => {
@@ -99,19 +99,19 @@ async fn watch_logs(
                                             return Ok(());
                                         }
                                     }
-                                    Err(e) => eprintln!("json {}: {}", container_name, e),
+                                    Err(e) => log::error!("json {}: {}", container_name, e),
                                 }
                             }
                         }
                         Err(e) => {
-                            eprintln!("line_result {}: {}", container_name, e);
+                            log::error!("line_result {}: {}", container_name, e);
                             break;
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("log_stream {}: {}", container_name, e);
+                log::error!("log_stream {}: {}", container_name, e);
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }

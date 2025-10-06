@@ -25,9 +25,9 @@ impl Slack {
 
         match serde_json::to_string_pretty(&alert) {
             Ok(payload) => {
-                println!("--- BEGIN SLACK PAYLOAD ---");
-                println!("{}", payload);
-                println!("--- END SLACK PAYLOAD ---");
+                log::info!("--- BEGIN SLACK PAYLOAD ---");
+                log::info!("{}", payload);
+                log::info!("--- END SLACK PAYLOAD ---");
             },
             Err(e) => {
                 return Err(anyhow::anyhow!("Failed to serialize slack alert: {}", e));
@@ -50,7 +50,7 @@ impl Slack {
             return Err(anyhow::anyhow!("slack api rejected payload: {}", body));
         }
 
-        println!("slack message sent and validated succesfully.");
+        log::info!("slack message sent and validated succesfully.");
         Ok(())
     }
 }
