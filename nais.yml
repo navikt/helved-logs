@@ -21,6 +21,12 @@ spec:
       memory: 24Mi
     limits:
       memory: 128Mi
+  accessPolicy:
+    outbound:
+      external:
+        - host: hooks.slack.com
+          ports:
+            - port: 443
   envFrom:
     - secret: slack-webhook
 
