@@ -28,6 +28,7 @@ impl Log {
         let team_logs_url = self.resolve_team_logs_url(&cluster, &container);
 
         json!({
+            "channels": "team-hel-ved-alerts",
             "blocks": [
                 {
                     "type": "header",
