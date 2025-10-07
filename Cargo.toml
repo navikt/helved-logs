@@ -14,3 +14,5 @@ tokio = { version = "1.47.1", features = ["full"] }
 reqwest = { version = "0.12.23", features = ["json", "rustls-tls"] }
 log4rs = { version = "1.4.0", features = ["json_encoder"] }
 log = "0.4.28"
+chrono = "0.4.42"
+urlencoding = "2.1.3"

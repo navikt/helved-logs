@@ -55,7 +55,7 @@ fn init_logger() {
     let config = log4rs::Config::builder()
         .appender(Appender::builder().build("stdout", Box::new(stdout)))
         .logger(Logger::builder().build("app::logs", log::LevelFilter::Info))
-        .build(Root::builder().appender("stdout").build(log::LevelFilter::Debug))
+        .build(Root::builder().appender("stdout").build(log::LevelFilter::Info))
         .expect("Failed to build log config");
 
     init_config(config).expect("Failed to init logger");
