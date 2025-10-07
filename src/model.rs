@@ -202,12 +202,27 @@ impl Log {
         format!("{host}/explore?schemaVersion=1&panes=%7B%22trace%22%3A%7B%22datasource%22%3A%{datasource}%22%2C%22queries%22%3A%5B%7B%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{trace_id}%22%7D%5D%7D%7D")
     }
 
-    fn resolve_peisen_url(&self, cluster: &str, _: &str) -> String {
+    fn resolve_peisen_url(&self, cluster: &str, trace_id: &str) -> String {
+        use chrono::{Utc, Duration};
+
         let host = match cluster {
-            "prod-gcp" => "https://peisen.intern.nav.no/kafka", 
-            _ => "https://peisen.intern.dev.nav.no/kafka", 
+            "prod-gcp" => "https://peisen.intern.nav.no", 
+            _ => "https://peisen.intern.dev.nav.no", 
         };
-        host.into()
+
+        let (fom, tom) = if let Some(timestamp) = &self.timestamp && let Ok((from, to)) = format_and_skew(timestamp.as_str(), "%Y-%m-%dT%H:%M:%S%.3fZ", 1) {
+            (from, to)
+        } else {
+            let now = Utc::now();
+            let fom = (now - Duration::minutes(1)).format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            let tom = (now + Duration::minutes(1)).format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            (fom, tom)
+        };
+
+        match trace_id {
+            "" => format!("{host}/kafka?fom={fom}&tom={tom}"),
+            _ => format!("{host}/kafka?fom={fom}&tom={tom}&trace_id={trace_id}")
+        }
     }
 
     fn resolve_grafana_loki(&self, container: &str, cluster: &str) -> String {
@@ -217,7 +232,10 @@ impl Log {
             _ => "P7BE696147D279490", 
         };
         let (from, to) = if let Some(timestamp) = &self.timestamp {
-            format_and_skew_timestamp(timestamp.as_str(), 2)
+            match format_and_skew(timestamp.as_str(), "%Y-%m-%dT%H:%M:%S%.3fZ", 1) {
+                Ok((from, to)) => (from, to),
+                Err(_) => ("now-6h".to_string(), "now".to_string())
+            }
         } else {
             ("now-6h".to_string(), "now".to_string())
         };
@@ -225,7 +243,11 @@ impl Log {
     }
 }
 
-fn format_and_skew_timestamp(ts_str: &str, skew_minutes: i64) -> (String, String) {
+fn format_and_skew(
+    ts_str: &str,
+    format: &str,
+    skew_minutes: i64,
+) -> anyhow::Result<(String, String)> {
     use chrono::{DateTime, Duration, Utc};
     use urlencoding::encode;
 
@@ -234,14 +256,12 @@ fn format_and_skew_timestamp(ts_str: &str, skew_minutes: i64) -> (String, String
             let dt_utc = dt.with_timezone(&Utc);
             let from_dt = dt_utc - Duration::minutes(skew_minutes);
             let to_dt = dt_utc + Duration::minutes(skew_minutes);
-            let format_str = "%Y-%m-%dT%H:%M:%S%.3fZ";
-            let from_fmt = from_dt.format(format_str).to_string();
-            let to_fmt = to_dt.format(format_str).to_string();
-            (encode(&from_fmt).to_string(), encode(&to_fmt).to_string())
+            let from_fmt = from_dt.format(format).to_string();
+            let to_fmt = to_dt.format(format).to_string();
+            Ok((encode(&from_fmt).to_string(), encode(&to_fmt).to_string()))
         }
         Err(e) => {
-            log::warn!("Failed to parse timestamp '{}': {}. Fallibg back to 'now-6h'.", ts_str, e);
-            ("now-6h".to_string(), "now".to_string())
+            Err(anyhow::anyhow!("Failed to parse timestamp '{}'.", e))
         }
     }
 }

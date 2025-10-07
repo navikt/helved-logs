@@ -23,16 +23,16 @@ impl Slack {
     ) -> Result<()> {
         let alert = log.to_slack_alert(container_name, pod_name);
 
-        match serde_json::to_string_pretty(&alert) {
-            Ok(payload) => {
-                log::info!("--- BEGIN SLACK PAYLOAD ---");
-                log::info!("{}", payload);
-                log::info!("--- END SLACK PAYLOAD ---");
-            },
-            Err(e) => {
-                return Err(anyhow::anyhow!("Failed to serialize slack alert: {}", e));
-            }
-        }
+        // match serde_json::to_string_pretty(&alert) {
+        //     Ok(payload) => {
+        //         log::info!("--- BEGIN SLACK PAYLOAD ---");
+        //         log::info!("{}", payload);
+        //         log::info!("--- END SLACK PAYLOAD ---");
+        //     },
+        //     Err(e) => {
+        //         return Err(anyhow::anyhow!("Failed to serialize slack alert: {}", e));
+        //     }
+        // }
         let res = reqwest::Client::new() 
             .post(&self.webhook)
             .json(&alert)

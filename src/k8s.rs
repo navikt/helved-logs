@@ -118,7 +118,7 @@ async fn watch_logs(
                             }
                         }
                         Err(e) => {
-                            log::error!("Error reading log line from {}: {}", task_name, e);
+                            log::warn!("Error reading log line from {}: {}", task_name, e);
                             break;
                         }
                     }
