@@ -116,13 +116,8 @@ impl Log {
                                 "emoji": true
                             },
                             "url": grafana_trace_url,
-                            "action_id": "button-action"
-                        }
-                    ],
-                },
-                {
-                    "type": "actions",
-                    "elements": [
+                            "action_id": "button-action-1"
+                        },
                         {
                             "type": "button",
                             "text": {
@@ -131,13 +126,8 @@ impl Log {
                                 "emoji": true
                             },
                             "url": grafana_log_url,
-                            "action_id": "button-action"
-                        }
-                    ],
-                },
-                {
-                    "type": "actions",
-                    "elements": [
+                            "action_id": "button-action-2"
+                        },
                         {
                             "type": "button",
                             "text": {
@@ -146,13 +136,8 @@ impl Log {
                                 "emoji": true
                             },
                             "url": team_logs_url,
-                            "action_id": "button-action"
-                        }
-                    ],
-                },
-                {
-                    "type": "actions",
-                    "elements": [
+                            "action_id": "button-action-3"
+                        },
                         {
                             "type": "button",
                             "text": {
@@ -161,9 +146,9 @@ impl Log {
                                 "emoji": true
                             },
                             "url": peisen_url,
-                            "action_id": "button-action"
+                            "action_id": "button-action-4"
                         }
-                    ],
+                    ]
                 }
             ]
         })
