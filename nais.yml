@@ -17,10 +17,10 @@ spec:
     min: 1
   resources:
     requests:
-      cpu: 20m
-      memory: 24Mi
+      cpu: 5m
+      memory: 40Mi
     limits:
-      memory: 128Mi
+      memory: 80Mi
   accessPolicy:
     outbound:
       external:
