@@ -9,6 +9,10 @@ mod probe;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("failed to install rustls aws-lc-rs crypto provider");
+
     init_logger();
 
     let client = kube::Client::try_default().await?;
