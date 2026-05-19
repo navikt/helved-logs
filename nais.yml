@@ -31,7 +31,7 @@ spec:
     - name: SLACK_CHANNEL
       value: "team-hel-ved-alerts"
     - name: AGGREGATE_WINDOW_SECONDS
-      value: "600"
+      value: "3600"
     - name: AGGREGATE_EDIT_THROTTLE_MS
       value: "5000"
   envFrom:
