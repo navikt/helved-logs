@@ -1,11 +1,14 @@
-use anyhow::Result;
-use tokio::{join, sync::mpsc::{self}};
-use log4rs::{config::*, encode::json::JsonEncoder, init_config, append::console::ConsoleAppender};
+use std::sync::Arc;
 
+use anyhow::Result;
+use log4rs::{append::console::ConsoleAppender, config::*, encode::json::JsonEncoder, init_config};
+use tokio::{join, sync::mpsc};
+
+mod aggregator;
 mod k8s;
 mod model;
-mod slack;
 mod probe;
+mod slack;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,27 +21,28 @@ async fn main() -> Result<()> {
     let client = kube::Client::try_default().await?;
     let namespace = env("NAIS_NAMESPACE");
     let (tx, mut rx) = mpsc::channel::<(model::Log, String, String)>(100);
-    let slack = slack::Slack::default();
 
-    let log_consumer = tokio::spawn(async move {
-        while let Some((log, container_name, pod_name))  = rx.recv().await {
-            log::info!("found {:?}", &log);
-            match slack.send(log, container_name, pod_name).await {
-                Ok(_) => log::info!("sent"),
-                Err(e) => log::info!("failed {}", e),
+    let slack = Arc::new(slack::Slack::default());
+    let window_seconds: i64 = env_or("AGGREGATE_WINDOW_SECONDS", 600);
+    let edit_throttle_ms: u64 = env_or("AGGREGATE_EDIT_THROTTLE_MS", 5000);
+    let aggregator = aggregator::Aggregator::new(slack.clone(), window_seconds, edit_throttle_ms);
+    let _flush_handle = aggregator.clone().spawn_flush();
+
+    let log_consumer = {
+        let aggregator = aggregator.clone();
+        tokio::spawn(async move {
+            while let Some((log, container_name, pod_name)) = rx.recv().await {
+                log::info!("found {:?}", &log);
+                aggregator.ingest(log, container_name, pod_name).await;
             }
-        }
-    });
+        })
+    };
 
     let pod_controller = k8s::watch_pods(client, &namespace, tx);
-
     let health_probe = probe::health_check_server();
 
-    let (consumer_res, controller_res, health_res) = join!(
-        log_consumer, 
-        pod_controller,
-        health_probe 
-    );
+    let (consumer_res, controller_res, health_res) =
+        join!(log_consumer, pod_controller, health_probe);
 
     controller_res?;
     health_res?;
@@ -49,6 +53,13 @@ async fn main() -> Result<()> {
 
 pub fn env(env: &str) -> String {
     std::env::var(env).unwrap_or_else(|_| panic!("env var {} missing", env))
+}
+
+fn env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn init_logger() {
@@ -64,4 +75,3 @@ fn init_logger() {
 
     init_config(config).expect("Failed to init logger");
 }
-

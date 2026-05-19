@@ -17,18 +17,25 @@ spec:
     min: 1
   resources:
     requests:
-      cpu: 5m
-      memory: 40Mi
+      cpu: 10m
+      memory: 128Mi
     limits:
-      memory: 80Mi
+      memory: 256Mi
   accessPolicy:
     outbound:
       external:
-        - host: hooks.slack.com
+        - host: slack.com
           ports:
             - port: 443
+  env:
+    - name: SLACK_CHANNEL
+      value: "team-hel-ved-alerts"
+    - name: AGGREGATE_WINDOW_SECONDS
+      value: "600"
+    - name: AGGREGATE_EDIT_THROTTLE_MS
+      value: "5000"
   envFrom:
-    - secret: slack-webhook
+    - secret: budstikka
 
 ---
 
@@ -59,4 +66,3 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: logs
-

@@ -1245,6 +1245,7 @@ dependencies = [
  "kube",
  "log",
  "log4rs",
+ "regex",
  "reqwest",
  "rustls",
  "serde",

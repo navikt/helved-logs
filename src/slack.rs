@@ -1,57 +1,109 @@
-use anyhow::Result;
-use anyhow::Context;
-use crate::model::Log;
+use anyhow::{anyhow, Result};
+use serde::Deserialize;
+
+const SLACK_POST_URL: &str = "https://slack.com/api/chat.postMessage";
+const SLACK_UPDATE_URL: &str = "https://slack.com/api/chat.update";
+
+#[derive(Clone, Debug)]
+pub struct PostedMessage {
+    pub channel: String,
+    pub ts: String,
+}
+
+#[derive(Deserialize)]
+struct SlackResponse {
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    ts: Option<String>,
+    #[serde(default)]
+    channel: Option<String>,
+}
 
 pub struct Slack {
-    webhook: String,
+    token: String,
+    channel: String,
+    http: reqwest::Client,
 }
 
 impl Default for Slack {
     fn default() -> Self {
         Slack {
-            webhook: crate::env("apiUrl"),
+            token: crate::env("SLACK_BOT_TOKEN"),
+            channel: crate::env("SLACK_CHANNEL"),
+            http: reqwest::Client::new(),
         }
     }
 }
 
 impl Slack {
-    pub async fn send(
+    pub async fn post(
         &self,
-        log: Log,
-        container_name: String,
-        pod_name: String,
-    ) -> Result<()> {
-        let alert = log.to_slack_alert(container_name, pod_name);
+        blocks: serde_json::Value,
+        fallback_text: &str,
+    ) -> Result<PostedMessage> {
+        let body = serde_json::json!({
+            "channel": self.channel,
+            "text": fallback_text,
+            "blocks": blocks,
+        });
 
-        // match serde_json::to_string_pretty(&alert) {
-        //     Ok(payload) => {
-        //         log::info!("--- BEGIN SLACK PAYLOAD ---");
-        //         log::info!("{}", payload);
-        //         log::info!("--- END SLACK PAYLOAD ---");
-        //     },
-        //     Err(e) => {
-        //         return Err(anyhow::anyhow!("Failed to serialize slack alert: {}", e));
-        //     }
-        // }
-        let res = reqwest::Client::new() 
-            .post(&self.webhook)
-            .json(&alert)
+        let resp: SlackResponse = self
+            .http
+            .post(SLACK_POST_URL)
+            .bearer_auth(&self.token)
+            .json(&body)
             .send()
+            .await?
+            .json()
             .await?;
 
-        let status = res.status();
-        if status.is_server_error() || status.is_client_error() {
-            let error_body = res.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("slack returned http error {}: {}", status, error_body));
+        if !resp.ok {
+            return Err(anyhow!(
+                "slack chat.postMessage failed: {}",
+                resp.error.unwrap_or_else(|| "unknown error".into())
+            ));
         }
 
-        let body = res.text().await.context("failed to read slack response body")?;
-        if body != "ok" {
-            return Err(anyhow::anyhow!("slack api rejected payload: {}", body));
+        Ok(PostedMessage {
+            channel: resp.channel.unwrap_or_else(|| self.channel.clone()),
+            ts: resp
+                .ts
+                .ok_or_else(|| anyhow!("slack postMessage returned ok but no ts"))?,
+        })
+    }
+
+    pub async fn update(
+        &self,
+        posted: &PostedMessage,
+        blocks: serde_json::Value,
+        fallback_text: &str,
+    ) -> Result<()> {
+        let body = serde_json::json!({
+            "channel": posted.channel,
+            "ts": posted.ts,
+            "text": fallback_text,
+            "blocks": blocks,
+        });
+
+        let resp: SlackResponse = self
+            .http
+            .post(SLACK_UPDATE_URL)
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if !resp.ok {
+            return Err(anyhow!(
+                "slack chat.update failed: {}",
+                resp.error.unwrap_or_else(|| "unknown error".into())
+            ));
         }
 
-        log::info!("slack message sent and validated succesfully.");
         Ok(())
     }
 }
-
