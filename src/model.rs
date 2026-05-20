@@ -120,17 +120,18 @@ impl<'a> AlertView<'a> {
 
     pub fn to_blocks(&self) -> serde_json::Value {
         let cluster = crate::env("NAIS_CLUSTER_NAME");
-        let single_trace = if self.trace_ids.len() == 1 {
-            self.trace_ids.iter().next().cloned().unwrap_or_default()
-        } else {
-            String::new()
-        };
+        let mut sorted_traces: Vec<&String> =
+            self.trace_ids.iter().filter(|s| !s.is_empty()).collect();
+        sorted_traces.sort();
+        let single_trace = sorted_traces
+            .first()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
 
         // Widen window to cover whole aggregate.
         let from = self.first_seen - Duration::minutes(1);
         let to = self.last_seen + Duration::minutes(1);
 
-        let grafana_trace_url = resolve_grafana_url(&cluster, &single_trace);
         let normalized_for_filter = self.sample.normalized_message();
         let line_filter_hint = filter_hint(&self.sample.message, &normalized_for_filter);
         let grafana_log_url =
@@ -138,6 +139,35 @@ impl<'a> AlertView<'a> {
         let peisen_url = resolve_peisen_url(&cluster, &single_trace, from, to);
         let team_logs_url =
             resolve_team_logs_url(self.container, &cluster, from, to, &line_filter_hint);
+
+        let mut action_elements: Vec<serde_json::Value> = Vec::new();
+        if !single_trace.is_empty() {
+            let grafana_trace_url = resolve_grafana_url(&cluster, &single_trace);
+            action_elements.push(json!({
+                "type": "button",
+                "text": { "type": "plain_text", "text": "trace :grafana:", "emoji": true },
+                "url": grafana_trace_url,
+                "action_id": "button-action-1"
+            }));
+        }
+        action_elements.push(json!({
+            "type": "button",
+            "text": { "type": "plain_text", "text": "open logs :grafana:", "emoji": true },
+            "url": grafana_log_url,
+            "action_id": "button-action-2"
+        }));
+        action_elements.push(json!({
+            "type": "button",
+            "text": { "type": "plain_text", "text": "secure logs :gcp:", "emoji": true },
+            "url": team_logs_url,
+            "action_id": "button-action-3"
+        }));
+        action_elements.push(json!({
+            "type": "button",
+            "text": { "type": "plain_text", "text": "peisen :wood:", "emoji": true },
+            "url": peisen_url,
+            "action_id": "button-action-4"
+        }));
 
         let cluster_label = match cluster.as_str() {
             "prod-gcp" => ":alert: PROD :alert:",
@@ -215,32 +245,7 @@ impl<'a> AlertView<'a> {
                 },
                 {
                     "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": { "type": "plain_text", "text": "trace :grafana:", "emoji": true },
-                            "url": grafana_trace_url,
-                            "action_id": "button-action-1"
-                        },
-                        {
-                            "type": "button",
-                            "text": { "type": "plain_text", "text": "open logs :grafana:", "emoji": true },
-                            "url": grafana_log_url,
-                            "action_id": "button-action-2"
-                        },
-                        {
-                            "type": "button",
-                            "text": { "type": "plain_text", "text": "secure logs :gcp:", "emoji": true },
-                            "url": team_logs_url,
-                            "action_id": "button-action-3"
-                        },
-                        {
-                            "type": "button",
-                            "text": { "type": "plain_text", "text": "peisen :wood:", "emoji": true },
-                            "url": peisen_url,
-                            "action_id": "button-action-4"
-                        }
-                    ]
+                    "elements": action_elements
                 }
             ]
         })["blocks"]
@@ -323,9 +328,9 @@ fn resolve_team_logs_url(
     use urlencoding::encode;
 
     let host = "https://console.cloud.google.com";
-    let cursor_timestamp = to.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-    let span_minutes = ((to - from).num_seconds().max(60) / 60).max(1);
-    let duration = format!("PT{span_minutes}M");
+    let start = from.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let end = to.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let time_range = format!("{start}%2F{end}");
 
     let namespace = crate::env("NAIS_NAMESPACE");
     let severity = "ERROR";
@@ -346,7 +351,7 @@ fn resolve_team_logs_url(
         _ => "helved-dev-9e3f",
     };
 
-    format!("{host}/logs/query;query={query};cursorTimestamp={cursor_timestamp};duration={duration}?project={project}")
+    format!("{host}/logs/query;query={query};timeRange={time_range}?project={project}")
 }
 
 fn resolve_grafana_url(cluster: &str, trace_id: &str) -> String {
