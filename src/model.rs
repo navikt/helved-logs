@@ -120,8 +120,7 @@ impl<'a> AlertView<'a> {
 
     pub fn to_blocks(&self) -> serde_json::Value {
         let cluster = crate::env("NAIS_CLUSTER_NAME");
-        let mut sorted_traces: Vec<&String> =
-            self.trace_ids.iter().filter(|s| !s.is_empty()).collect();
+        let mut sorted_traces: Vec<&String> = self.trace_ids.iter().filter(|s| !s.is_empty()).collect();
         sorted_traces.sort();
         let single_trace = sorted_traces
             .first()
@@ -134,11 +133,9 @@ impl<'a> AlertView<'a> {
 
         let normalized_for_filter = self.sample.normalized_message();
         let line_filter_hint = filter_hint(&self.sample.message, &normalized_for_filter);
-        let grafana_log_url =
-            resolve_grafana_loki(self.container, &cluster, from, to, &line_filter_hint);
+        let grafana_log_url = resolve_grafana_loki(self.container, from, to, &line_filter_hint);
         let peisen_url = resolve_peisen_url(&cluster, &single_trace, from, to);
-        let team_logs_url =
-            resolve_team_logs_url(self.container, &cluster, from, to, &line_filter_hint);
+        let team_logs_url = resolve_team_logs_url(self.container, &cluster, from, to, &line_filter_hint);
 
         let mut action_elements: Vec<serde_json::Value> = Vec::new();
         if !single_trace.is_empty() {
@@ -342,7 +339,7 @@ fn resolve_team_logs_url(
         format!("severity>={severity}"),
     ];
     if !filter_hint.is_empty() {
-        query_lines.push(format!("textPayload:\"{filter_hint}\""));
+        query_lines.push(format!("jsonPayload.message:\"{filter_hint}\""));
     }
     let query = encode(&query_lines.join("\n")).to_string();
 
@@ -388,16 +385,12 @@ fn resolve_peisen_url(
 
 fn resolve_grafana_loki(
     container: &str,
-    cluster: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     filter_hint: &str,
 ) -> String {
     let host = "https://grafana.nav.cloud.nais.io";
-    let var_ds = match cluster {
-        "prod-gcp" => "PD969E40991D5C4A8",
-        _ => "P7BE696147D279490",
-    };
+    let var_ds = "PEA2100DC89AE9FE2";
     let from_fmt = urlencoding::encode(&from.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).to_string();
     let to_fmt = urlencoding::encode(&to.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).to_string();
 
