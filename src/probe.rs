@@ -1,12 +1,13 @@
-use anyhow::{Result, Context};
+use ::tokio::io::{AsyncReadExt, AsyncWriteExt};
+use anyhow::{Context, Result};
 use std::time::Duration;
-use::tokio::{io::{AsyncReadExt, AsyncWriteExt}};
 
 pub async fn health_check_server() -> Result<()> {
     let port = 8080;
     let addr = format!("0.0.0.0:{}", port);
-    
-    let listener = tokio::net::TcpListener::bind(&addr).await
+
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
         .context(format!("Failed to bind TCP listener to {}", addr))?;
 
     log::info!("[HEALTH] Health check server listening on {}", addr);
@@ -20,7 +21,9 @@ pub async fn health_check_server() -> Result<()> {
                 tokio::spawn(async move {
                     let mut buf = [0; 1024];
                     let _ = socket.read(&mut buf).await;
-                    if let Err(e) = socket.write_all(response_bytes).await && e.kind() != std::io::ErrorKind::BrokenPipe {
+                    if let Err(e) = socket.write_all(response_bytes).await
+                        && e.kind() != std::io::ErrorKind::BrokenPipe
+                    {
                         log::error!("[HEALTH ERROR] Failed to write response: {}", e);
                     }
                 });
@@ -32,4 +35,3 @@ pub async fn health_check_server() -> Result<()> {
         }
     }
 }
-

@@ -9,6 +9,8 @@ use tokio::time::Instant;
 use crate::model::{AlertView, Log};
 use crate::slack::{PostedMessage, Slack};
 
+const KAFKA_ALERT_DELAY: StdDuration = StdDuration::from_secs(5 * 60);
+
 pub struct Aggregate {
     container: String,
     first_seen: DateTime<Utc>,
@@ -18,6 +20,9 @@ pub struct Aggregate {
     pods: HashSet<String>,
     trace_ids: HashSet<String>,
     posted: Option<PostedMessage>,
+    is_kafka_log: bool,
+    first_seen_at: Instant,
+    posting: bool,
     last_edit: Option<Instant>,
     dirty: bool,
 }
@@ -51,6 +56,7 @@ impl Aggregator {
     }
 
     pub async fn ingest(&self, log: Log, container: String, pod: String) {
+        let is_kafka_log = log.is_kafka_log();
         let key = log.aggregation_key(&container);
         let now = Utc::now();
         let event_ts = log.parsed_timestamp().unwrap_or(now);
@@ -69,6 +75,21 @@ impl Aggregator {
                 }
                 agg.sample = log;
                 agg.dirty = true;
+
+                if agg.is_kafka_log
+                    && agg.posted.is_none()
+                    && !agg.posting
+                    && Instant::now().saturating_duration_since(agg.first_seen_at)
+                        >= KAFKA_ALERT_DELAY
+                {
+                    agg.posting = true;
+                    let view = build_view(agg);
+                    let blocks = view.to_blocks();
+                    let fallback = view.fallback_text();
+                    drop(map);
+                    self.post(&key, blocks, fallback).await;
+                }
+
                 return;
             }
             // Stale: evict and fall through to fresh post.
@@ -82,7 +103,6 @@ impl Aggregator {
         }
         let mut pods = HashSet::new();
         pods.insert(pod);
-
         let agg = Aggregate {
             container: container.clone(),
             first_seen: event_ts.min(now),
@@ -92,6 +112,9 @@ impl Aggregator {
             pods,
             trace_ids,
             posted: None,
+            is_kafka_log,
+            first_seen_at: Instant::now(),
+            posting: !is_kafka_log,
             last_edit: None,
             dirty: false,
         };
@@ -99,6 +122,10 @@ impl Aggregator {
 
         // Build view + post while still holding the lock so we don't double-post for the
         // same key on bursts. Volume is low so this is acceptable.
+        if is_kafka_log {
+            return;
+        }
+
         let view = {
             let agg = map.get(&key).expect("just inserted");
             build_view(agg)
@@ -107,19 +134,26 @@ impl Aggregator {
         let fallback = view.fallback_text();
         drop(map);
 
+        self.post(&key, blocks, fallback).await;
+    }
+
+    async fn post(&self, key: &str, blocks: serde_json::Value, fallback: String) {
         match self.slack.post(blocks, &fallback).await {
             Ok(posted) => {
                 let mut map = self.map.lock().await;
-                if let Some(agg) = map.get_mut(&key) {
+                if let Some(agg) = map.get_mut(key) {
                     agg.posted = Some(posted);
+                    agg.posting = false;
                     agg.last_edit = Some(Instant::now());
                 }
             }
             Err(e) => {
                 log::error!("slack post failed for key {}: {}", key, e);
-                // Drop the aggregate so the next event tries again.
+                // Keep aggregate so a failed post does not reset its occurrence count.
                 let mut map = self.map.lock().await;
-                map.remove(&key);
+                if let Some(agg) = map.get_mut(key) {
+                    agg.posting = false;
+                }
             }
         }
     }
@@ -140,6 +174,9 @@ impl Aggregator {
                     to_evict.push(key.clone());
                     continue;
                 }
+                if agg.posted.is_none() {
+                    continue;
+                }
                 if !agg.dirty {
                     continue;
                 }
@@ -154,7 +191,12 @@ impl Aggregator {
                     continue;
                 };
                 let view = build_view(agg);
-                to_update.push((key.clone(), view.to_blocks(), view.fallback_text(), posted.clone()));
+                to_update.push((
+                    key.clone(),
+                    view.to_blocks(),
+                    view.fallback_text(),
+                    posted.clone(),
+                ));
             }
         }
 

@@ -1,8 +1,8 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -13,6 +13,7 @@ pub struct Log {
     timestamp: Option<String>,
     logger_name: Option<String>,
     message: String,
+    stack_trace: Option<String>,
     trace_id: Option<String>,
     span_id: Option<String>,
     #[serde(rename = "HOSTNAME")]
@@ -22,6 +23,11 @@ pub struct Log {
 impl Log {
     pub fn is_error(&self) -> bool {
         self.level == "ERROR"
+    }
+
+    pub fn is_kafka_log(&self) -> bool {
+        self.logger_name()
+            .is_some_and(|logger| logger.starts_with("org.apache.kafka."))
     }
 
     pub fn logger_name(&self) -> Option<&str> {
@@ -72,7 +78,8 @@ fn normalize_message(input: &str) -> String {
         Regex::new(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").unwrap()
     });
     let ts = TS.get_or_init(|| {
-        Regex::new(r"(?i)\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}:\d{2}(\.\d+)?(z|[+-]\d{2}:?\d{2})?").unwrap()
+        Regex::new(r"(?i)\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}:\d{2}(\.\d+)?(z|[+-]\d{2}:?\d{2})?")
+            .unwrap()
     });
     let hex = HEX.get_or_init(|| Regex::new(r"(?i)\b[0-9a-f]{16,}\b").unwrap());
     let dquote = DQUOTE.get_or_init(|| Regex::new(r#""[^"]*""#).unwrap());
@@ -120,7 +127,8 @@ impl<'a> AlertView<'a> {
 
     pub fn to_blocks(&self) -> serde_json::Value {
         let cluster = crate::env("NAIS_CLUSTER_NAME");
-        let mut sorted_traces: Vec<&String> = self.trace_ids.iter().filter(|s| !s.is_empty()).collect();
+        let mut sorted_traces: Vec<&String> =
+            self.trace_ids.iter().filter(|s| !s.is_empty()).collect();
         sorted_traces.sort();
         let single_trace = sorted_traces
             .first()
@@ -135,7 +143,8 @@ impl<'a> AlertView<'a> {
         let line_filter_hint = filter_hint(&self.sample.message, &normalized_for_filter);
         let grafana_log_url = resolve_grafana_loki(self.container, from, to, &line_filter_hint);
         let peisen_url = resolve_peisen_url(&cluster, &single_trace, from, to);
-        let team_logs_url = resolve_team_logs_url(self.container, &cluster, from, to, &line_filter_hint);
+        let team_logs_url =
+            resolve_team_logs_url(self.container, &cluster, from, to, &line_filter_hint);
 
         let mut action_elements: Vec<serde_json::Value> = Vec::new();
         if !single_trace.is_empty() {
@@ -312,7 +321,12 @@ fn filter_hint(original: &str, normalized: &str) -> String {
             .to_string()
     };
 
-    candidate.chars().take(60).collect::<String>().trim().to_string()
+    candidate
+        .chars()
+        .take(60)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn resolve_team_logs_url(
@@ -357,7 +371,9 @@ fn resolve_grafana_url(cluster: &str, trace_id: &str) -> String {
         _ => "22P95CC91DC09CABFC8",
     };
     let host = "https://grafana.nav.cloud.nais.io";
-    format!("{host}/explore?schemaVersion=1&panes=%7B%22trace%22%3A%7B%22datasource%22%3A%{datasource}%22%2C%22queries%22%3A%5B%7B%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{trace_id}%22%7D%5D%7D%7D")
+    format!(
+        "{host}/explore?schemaVersion=1&panes=%7B%22trace%22%3A%7B%22datasource%22%3A%{datasource}%22%2C%22queries%22%3A%5B%7B%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{trace_id}%22%7D%5D%7D%7D"
+    )
 }
 
 fn resolve_peisen_url(
@@ -391,7 +407,8 @@ fn resolve_grafana_loki(
 ) -> String {
     let host = "https://grafana.nav.cloud.nais.io";
     let var_ds = "PEA2100DC89AE9FE2";
-    let from_fmt = urlencoding::encode(&from.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).to_string();
+    let from_fmt =
+        urlencoding::encode(&from.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).to_string();
     let to_fmt = urlencoding::encode(&to.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).to_string();
 
     let line_filter = if filter_hint.is_empty() {
@@ -404,7 +421,9 @@ fn resolve_grafana_loki(
         )
     };
 
-    format!("{host}/a/grafana-lokiexplore-app/explore/service/{container}/logs?from={from_fmt}&to={to_fmt}&var-ds={var_ds}&var-filters=service_name|%3D|{container}&patterns=[]&var-lineFormat=&var-fields=&var-levels=detected_level|%3D|Error&var-levels=detected_level|%3D|error&var-metadata=&var-jsonFields=&var-patterns={line_filter}&displayedFields=[]&urlColumns=[%22Time%22,%22service_name%22,%22logger_name%22,%22detected_level%22,%22message%22,%22trace_id%22,%22stack_trace%22]&visualizationType=%22logs%22&sortOrder=%22Descending%22&timezone=browser&prettifyLogMessage=true&var-all-fields=&wrapLogMessage=true")
+    format!(
+        "{host}/a/grafana-lokiexplore-app/explore/service/{container}/logs?from={from_fmt}&to={to_fmt}&var-ds={var_ds}&var-filters=service_name|%3D|{container}&patterns=[]&var-lineFormat=&var-fields=&var-levels=detected_level|%3D|Error&var-levels=detected_level|%3D|error&var-metadata=&var-jsonFields=&var-patterns={line_filter}&displayedFields=[]&urlColumns=[%22Time%22,%22service_name%22,%22logger_name%22,%22detected_level%22,%22message%22,%22trace_id%22,%22stack_trace%22]&visualizationType=%22logs%22&sortOrder=%22Descending%22&timezone=browser&prettifyLogMessage=true&var-all-fields=&wrapLogMessage=true"
+    )
 }
 
 #[cfg(test)]
@@ -429,6 +448,7 @@ mod tests {
             timestamp: None,
             logger_name: Some("foo".into()),
             message: m.to_string(),
+            stack_trace: None,
             trace_id: None,
             span_id: None,
             hostname: None,
@@ -436,5 +456,42 @@ mod tests {
         let a = make("NPE in handleEvent(eventId=12345678-1234-1234-1234-123456789012)");
         let b = make("NPE in handleEvent(eventId=87654321-4321-4321-4321-210987654321)");
         assert_eq!(a.aggregation_key("c1"), b.aggregation_key("c1"));
+    }
+
+    #[test]
+    fn identifies_kafka_logs_from_logger_name() {
+        let base = Log {
+            level: "ERROR".into(),
+            timestamp: None,
+            logger_name: Some("org.apache.kafka.streams.processor.internals.StreamThread".into()),
+            message: "error".into(),
+            stack_trace: None,
+            trace_id: None,
+            span_id: None,
+            hostname: None,
+        };
+        let non_kafka = Log {
+            logger_name: Some("appLog".into()),
+            ..base.clone()
+        };
+
+        assert!(base.is_kafka_log());
+        assert!(!non_kafka.is_kafka_log());
+    }
+
+    #[test]
+    fn loggers_without_kafka_package_prefix_are_not_kafka_logs() {
+        let log = Log {
+            level: "ERROR".into(),
+            timestamp: None,
+            logger_name: Some("kafka".into()),
+            message: "Kafka wrapper error".into(),
+            stack_trace: None,
+            trace_id: None,
+            span_id: None,
+            hostname: None,
+        };
+
+        assert!(!log.is_kafka_log());
     }
 }

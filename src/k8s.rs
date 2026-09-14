@@ -1,10 +1,14 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use futures::{AsyncBufReadExt, StreamExt, TryStreamExt};
-use k8s_openapi::{api::core::v1::Pod};
-use kube::{api::{Api, LogParams}, runtime::{watcher}, Client, ResourceExt };
-use tokio::{sync::mpsc::{Sender}, time::Duration, task::{AbortHandle}};
+use k8s_openapi::api::core::v1::Pod;
+use kube::{
+    Client, ResourceExt,
+    api::{Api, LogParams},
+    runtime::watcher,
+};
+use tokio::{sync::mpsc::Sender, task::AbortHandle, time::Duration};
 
 use crate::model::Log;
 
@@ -24,14 +28,23 @@ pub async fn watch_pods(
             watcher::Event::InitApply(pod) | watcher::Event::Apply(pod) => {
                 let pod_name = pod.name_any();
 
-                if pod_phase(&pod) == "Running" { // && !log_tasks.contains_key(&pod_name) {
-                    let containers = pod.spec
+                if pod_phase(&pod) == "Running" {
+                    // && !log_tasks.contains_key(&pod_name) {
+                    let containers = pod
+                        .spec
                         .map(|spec| spec.containers)
-                        .map(|containers| containers.into_iter().map(|c|c.name).collect::<Vec<String>>())
+                        .map(|containers| {
+                            containers
+                                .into_iter()
+                                .map(|c| c.name)
+                                .collect::<Vec<String>>()
+                        })
                         .unwrap_or_default();
 
                     for container_name in containers {
-                        if container_name == self_name { continue; }
+                        if container_name == self_name {
+                            continue;
+                        }
                         let task_key = format!("{}/{}", pod_name, container_name);
                         if !log_tasks.contains_key(&task_key) {
                             let pods_clone = api.clone();
@@ -39,7 +52,14 @@ pub async fn watch_pods(
                             let pod_name_clone = pod_name.clone();
 
                             let handle = tokio::spawn(async move {
-                                match watch_logs(container_name, pod_name_clone, pods_clone, tx_clone).await {
+                                match watch_logs(
+                                    container_name,
+                                    pod_name_clone,
+                                    pods_clone,
+                                    tx_clone,
+                                )
+                                .await
+                                {
                                     Ok(_) => (),
                                     Err(e) => log::error!("Task error {}", e),
                                 }
@@ -64,7 +84,7 @@ pub async fn watch_pods(
                         log::info!("aborted log task for {}", key);
                     }
                 }
-            },
+            }
             watcher::Event::Init | watcher::Event::InitDone => {}
         }
     }
@@ -73,9 +93,10 @@ pub async fn watch_pods(
 }
 
 fn pod_phase(pod: &Pod) -> &str {
-    pod.status.as_ref()
+    pod.status
+        .as_ref()
         .and_then(|s| s.phase.as_ref())
-        .map(|s|s.as_str())
+        .map(|s| s.as_str())
         .unwrap_or("unknown")
 }
 
@@ -88,8 +109,8 @@ async fn watch_logs(
     loop {
         let params = LogParams {
             container: Some(container_name.clone()),
-            tail_lines: Some(0), 
-            timestamps: false, 
+            tail_lines: Some(0),
+            timestamps: false,
             follow: true,
             ..LogParams::default()
         };
@@ -108,12 +129,26 @@ async fn watch_logs(
                                 let json_part = &line[json_start_idx..];
                                 match serde_json::from_str::<Log>(json_part) {
                                     Ok(log) => {
-                                        if log.is_error() && tx.send((log, container_name.clone(), pod_name.clone())).await.is_err() { 
-                                            log::info!("Log channel closed, stopping log task for {}", task_name);
+                                        if log.is_error()
+                                            && tx
+                                                .send((
+                                                    log,
+                                                    container_name.clone(),
+                                                    pod_name.clone(),
+                                                ))
+                                                .await
+                                                .is_err()
+                                        {
+                                            log::info!(
+                                                "Log channel closed, stopping log task for {}",
+                                                task_name
+                                            );
                                             return Ok(());
                                         }
                                     }
-                                    Err(e) => log::error!("JSON parse error on {}: {}", task_name, e),
+                                    Err(e) => {
+                                        log::error!("JSON parse error on {}: {}", task_name, e)
+                                    }
                                 }
                             }
                         }
@@ -128,7 +163,10 @@ async fn watch_logs(
             }
             Err(e) => {
                 if is_not_found(&e) {
-                    log::info!("Pod {} not found (likely deleted), stopping the log task.", pod_name);
+                    log::info!(
+                        "Pod {} not found (likely deleted), stopping the log task.",
+                        pod_name
+                    );
                     return Ok(());
                 }
 
@@ -145,4 +183,3 @@ fn is_not_found(e: &kube::Error) -> bool {
     }
     false
 }
-

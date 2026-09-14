@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::Deserialize;
 
 const SLACK_POST_URL: &str = "https://slack.com/api/chat.postMessage";
