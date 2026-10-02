@@ -20,7 +20,7 @@ COPY . .
 RUN cargo build --release --bin logs
 
 
-FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+FROM gcr.io/distroless/cc-debian13:nonroot AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/logs /usr/local/bin/logs
 ENTRYPOINT ["/usr/local/bin/logs"]
